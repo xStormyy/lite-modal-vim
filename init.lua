@@ -8,9 +8,9 @@ local command = require("core.command")
 local core = require("core")
 local common = require("core.common")
 
--- require("plugins.modal-vi.command_mode")
+-- require("plugins.modal_vim.command_mode")
 
-local modal_vi = {}
+local modal_vim = {}
 
 local mode = {
     NORMAL = "NORMAL",
@@ -28,17 +28,17 @@ end
 
 -- implement keymap.set function similar to neovim (use lite-xl's function as reference)
 -- example
--- config.plugins.modal_vi.keymap.set("normal", "U", "doc:undo")
+-- config.plugins.modal_vim.keymap.set("normal", "U", "doc:undo")
 --                                    ^^^  ^^^  ^^^^^^^^^^
 --                                    mode key  action 
 -- TODO: implement in such a way that you can add keybinds from init.lua (or any other file), similarly to vibe
-config.plugins.modal_vi = common.merge({
+config.plugins.modal_vim = common.merge({
     user_keymap_normal = {},
     user_keymap_insert = {},
     user_keymap_visual = {},
     user_keymap_visual_line = {},
+    mouse_interactions = false
 })
-
 
 -- Serves to replicate the functionality of the C-i keybinding when in insert mode in vim
 local function indent_at_cursor()
@@ -354,4 +354,4 @@ command.add("core.docview", {
     ["q"] = function() command.perform("root:close") end
 })
 
-return modal_vi
+return modal_vim
