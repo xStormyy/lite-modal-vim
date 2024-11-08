@@ -17,5 +17,7 @@ This plugin adds various features from the vim text editor, such as modes, and i
 
 ## Credits
 [Lite-XL-Vibe](https://github.com/eugenpt/lite-xl-vibe) - First modal-editing plugin that I personally used
+
 [Vim](https://vim.org) & [Neovim](https://neovim.io) - For being great text editors
+
 [lite-modal](https://codeberg.org/Mandarancio/lite-modal) - Uses the lite-modal plugin under the hood
