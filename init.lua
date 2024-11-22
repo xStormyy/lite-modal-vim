@@ -7,6 +7,8 @@ local config = require("core.config")
 local command = require("core.command")
 local core = require("core")
 local common = require("core.common")
+local search = require("core.doc.search")
+
 
 -- require("plugins.modal_vim.command_mode")
 
@@ -17,12 +19,91 @@ local mode = {
     INSERT = "INSERT",
     VISUAL = "VISUAL",
     VISUAL_LINE = "VISUAL_LINE",
+    VISUAL_BLOCK = "VISUAL_BLOCK",
 }
 
 local function move_to_start_of_next_word()
     command.perform("doc:move-to-next-word-end")
     -- wait a few seconds for the cursor to jump to next word
     command.perform("doc:move-to-start-of-word")
+end
+
+
+local function dv()
+  return core.active_view
+end
+
+local function doc()
+  return dv().doc
+end
+
+
+local function sort_positions(line1, col1, line2, col2)
+  if line1 > line2 or line1 == line2 and col1 > col2 then
+    return line2, col2, line1, col1, true
+  end
+  return line1, col1, line2, col2, false
+end
+
+local function doc_multiline_selections(sort)
+  if dv() == nil or doc() == nil or doc().get_selections == nil then return function() return nil end end
+  local iter, state, idx, line1, col1, line2, col2 = doc():get_selections(sort)
+  return function()
+    idx, line1, col1, line2, col2 = iter(state, idx)
+    if idx and line2 > line1 and col2 == 1 then
+      line2 = line2 - 1
+      col2 = #doc().lines[line2]
+    end
+    return idx, line1, col1, line2, col2
+  end
+end
+
+
+
+local function get_last_key()
+  local view = core.active_view
+  if view.modal then
+    local seq = modal.split_command(view.modal.current_command.seq)
+    local last = seq[#seq]
+    if #last > 1 then
+      last = modal.reverse_key_mapping[last]
+    end
+    if last then
+      return last
+    end
+  end
+  return nil
+end
+
+
+local function move_on_next_char()
+  local view = core.active_view
+  local last = get_last_key()
+  if last then
+    for idx, line1, col1, line2, col2 in doc_multiline_selections(false) do
+      local _, _, l2, c2 = sort_positions(line1, col1, line2, col2)
+      local ok, _, _, lnn, cnn = pcall(search.find, view.doc, l2, c2 + 1, last,
+        { wrap = false, regex = false, no_case = false, reverse = false })
+      if ok and lnn then
+        view.doc:set_selections(idx, lnn, cnn, l2, c2)
+      end
+    end
+  end
+end
+
+local function move_on_prev_char()
+  local view = dv()
+  local last = get_last_key()
+  if last then
+    for idx, line1, col1, line2, col2 in doc_multiline_selections(false) do
+      local l1, c1, _, _ = sort_positions(line1, col1, line2, col2)
+      local ok, lnn, cnn, _, _ = pcall(search.find, view.doc, l1, c1, last,
+        { wrap = false, regex = false, no_case = false, reverse = true })
+      if ok and lnn then
+        view.doc:set_selections(idx, lnn, cnn, l1, c1)
+      end
+    end
+  end
 end
 
 
@@ -37,6 +118,7 @@ config.plugins.modal_vim = common.merge({
     user_keymap_insert = {},
     user_keymap_visual = {},
     user_keymap_visual_line = {},
+    user_keymap_visual_block = {},
     mouse_interactions = false
 })
 
@@ -56,7 +138,7 @@ local function indent_at_cursor()
 end
 
 config.plugins.modal.base_mode = mode.NORMAL
-config.plugins.modal.modes = { mode.NORMAL, mode.INSERT, mode.VISUAL, mode.VISUAL_LINE }
+config.plugins.modal.modes = { mode.NORMAL, mode.INSERT, mode.VISUAL, mode.VISUAL_LINE, mode.VISUAL_BLOCK }
 
 config.plugins.modal.keymaps = {
   NORMAL = {
@@ -73,9 +155,12 @@ config.plugins.modal.keymaps = {
     -- VISUAL Mode
     ["v"] = { modal.go_to_mode(mode.VISUAL) },
     ["V"] = { "doc:move-to-start-of-line", "doc:select-to-next-line", "doc:select-to-previous-char", modal.go_to_mode(mode.VISUAL_LINE) },
-    ["C-v"] = { }, -- BLOCK visual mode, use multi cursor to simulate or try to get selection functions working
+    -- ["V"] = { "doc:move-to-end-of-line", "doc:select-to-start-of-line", modal.go_to_mode(mode.VISUAL_LINE) },
+    ["C-v"] = { modal.go_to_mode(mode.VISUAL_BLOCK) }, -- BLOCK visual mode, use multi cursor to simulate or try to get selection functions working
 
     ["viw"] = { "doc:move-to-start-of-word", "doc:select-to-next-word-end" },
+    ["vi'"] = { move_on_next_char, "v", move_on_next_char },
+    ['vi<.>'] = { move_on_next_char, "doc:select-none", "v", move_on_next_char },
 
 
     [":"] = "core:find-command",
@@ -111,8 +196,8 @@ config.plugins.modal.keymaps = {
     ["c0"] = { "doc:delete-to-start-of-line", modal.go_to_mode(mode.INSERT) },
     ["c$"] = { "doc:delete-to-end-of-line", modal.go_to_mode(mode.INSERT) },
     ["ce"] = { "doc:delete-to-end-of-word", modal.go_to_mode(mode.INSERT) },
-    ["dgg"] = { "doc:delete-to-start-of-doc", modal.go_to_mode(mode.INSERT) },
-    ["dG"] = { "doc:delete-to-end-of-doc", modal.go_to_mode(mode.INSERT) },
+    ["cgg"] = { "doc:delete-to-start-of-doc", modal.go_to_mode(mode.INSERT) },
+    ["cG"] = { "doc:delete-to-end-of-doc", modal.go_to_mode(mode.INSERT) },
 
     -- Basic movements
     ["<right>"] = { "doc:move-to-next-char" },
@@ -126,8 +211,8 @@ config.plugins.modal.keymaps = {
 
     ["l"] = { "doc:move-to-next-char" },
     ["h"] = { "doc:move-to-previous-char" },
-    ["j"] = { "doc:move-to-previous-line" },
-    ["k"] = { "doc:move-to-next-line" },
+    ["k"] = { "doc:move-to-previous-line" },
+    ["j"] = { "doc:move-to-next-line" },
 
     -- ["w"] = move_to_start_of_next_word,
     ["w"] = "doc:move-to-next-word-end",
@@ -138,6 +223,14 @@ config.plugins.modal.keymaps = {
 
     ["C-<right>"] = { "doc:move-to-next-word-end" },
     ["C-<left>"] = { "doc:move-to-previous-word-start" },
+
+    ["f<.>"] = { move_on_next_char, "doc:select-none", "doc:move-to-previous-char" }, -- hacked together as hell LMAOOOOOO
+    ["F<.>"] = { move_on_prev_char, "doc:select-none" }, -- hacked together as hell LMAOOOOOO
+
+    -- ["F<.>"] = move_on_prev_char,
+    --
+    -- ["t<.>"] = move_after_next_char,
+    -- ["T<.>"] = move_after_prev_char,
 
 
     ["yy"] = { "doc:move-to-start-of-line", "doc:select-to-end-of-line", "doc:copy", "doc:select-none" },
@@ -158,16 +251,22 @@ config.plugins.modal.keymaps = {
     ["$"] = "doc:move-to-end-of-line",
     ["0"] = "doc:move-to-start-of-line", -- still doesnt work due to limitation of the modal plugin
 
-    ["C-w v"] = { "doc:split-left", "root:switch-to-left" },
-    ["C-w s"] = { "doc:split-up", "root:switch-to-top" },
-    
+    ["C-wv"] = { "doc:split-left", "root:switch-to-left" },
+    ["C-ws"] = { "doc:split-up", "root:switch-to-top" },
+
+    ["<space>wv"] = { "root:split-right", "root:switch-to-right" },
+    ["<space>ws"] = { "root:split-down", "root:switch-to-down" },
+
     -- ["~"] = { "doc:move-to-next-char", "doc:select-to-previous-char", "doc:upper-case", "doc:select-none" },
   },
   INSERT = {
     ["<ESC>"] = { modal.go_to_mode(mode.NORMAL) },
     ["C-c"] = { modal.go_to_mode(mode.NORMAL) },
 
-    ["C-C"] = { "doc:copy" },
+    ["<bkspc>"] =   { "doc:delete-to-previous-char" },
+    ["C-<bkspc>"] = { "doc:delete-to-previous-word-start" },
+
+    ["C-V"] = { "doc:paste" },
 
     ["C-h"] = { "doc:delete-to-previous-char" },
     ["C-H"] = { "doc:delete-to-previous-char" },
@@ -176,7 +275,7 @@ config.plugins.modal.keymaps = {
 
     ["C-w"] = { "doc:delete-to-previous-word" },
     ["C-W"] = { "doc:delete-to-previous-word" },
- 
+
     ["C-u"] = { "doc:delete-to-previous-line" },
 
     ["C-r"] = {}, -- paste from registers
@@ -200,8 +299,8 @@ config.plugins.modal.keymaps = {
     
     ["l"] =  { "doc:select-to-next-char" },
     ["h"] =  { "doc:select-to-previous-char" },
-    ["j"] =  { "doc:select-to-previous-line" },
-    ["k"] =  { "doc:select-to-next-line" },
+    ["k"] =  { "doc:select-to-previous-line" },
+    ["j"] =  { "doc:select-to-next-line" },
     ["gg"] = { "doc:select-to-end-of-doc" },
     ["G"] =  { "doc:select-to-start-of-doc" },
 
@@ -209,11 +308,16 @@ config.plugins.modal.keymaps = {
     ["e"] = { "doc:select-to-end-of-word" },
     ["B"] = { "doc:select-to-previous-WORD-start" },
     ["W"] = { "doc:select-to-next-WORD-end" },
-
     ["w"] = "doc:select-to-next-word-end",
     ["b"] = "doc:select-to-previous-word-start",
-    
-    ["vip"] = { "doc:select-to-next-block-end" },
+
+    ["f<.>"] = { move_on_next_char, "doc:select-to-previous-char" }, -- hacked together as hell LMAOOOOOO
+    ["F<.>"] = { move_on_prev_char }, -- hacked together as hell LMAOOOOOO
+
+    ["ip"] = { "doc:select-to-next-block-end" },
+
+
+
 
     ["d"] = { "doc:copy", "doc:delete", "doc:select-none", modal.go_to_mode(mode.NORMAL) },
     ["x"] = { "doc:copy", "doc:delete", "doc:select-none", modal.go_to_mode(mode.NORMAL) },
@@ -229,7 +333,6 @@ config.plugins.modal.keymaps = {
     ["U"] = { "doc:upper-case", "doc:select-none", modal.go_to_mode(mode.NORMAL) },
 
     [":"] = "core:find-command",
-
     },
 
   VISUAL_LINE = {
@@ -252,14 +355,30 @@ config.plugins.modal.keymaps = {
     -- ["<right>"] = { "doc:select-to-next-char" },
     -- ["<left>"] = { "doc:select-to-previous-char" },
 
-    ["j"] =  { "doc:select-to-previous-line" },
-    ["k"] =  { "doc:select-to-next-line" },
+    ["k"] =  { "doc:select-to-previous-line" },
+    ["j"] =  { "doc:select-to-next-line" },
+    
     ["gg"] = { "doc:select-to-end-of-doc" },
+    ["G"] = { "doc:select-to-start-of-doc" },
+
+    ["C-u"] = { "doc:select-to-previous-page" },
+    ["C-d"] = { "doc:select-to-next-page" },
 
     [">"] =   { "doc:indent" },
     ["\\<"] = { "doc:unindent" },
 
     [":"] = "core:find-command",
+  },
+
+  VISUAL_BLOCK = {
+    ["<ESC>"] = { modal.go_to_mode(mode.NORMAL), "doc:select-none" },
+    ["C-c"] = { modal.go_to_mode(mode.NORMAL), "doc:select-none" },
+    ["y"] = { "doc:copy", "doc:select-none", modal.go_to_mode(mode.NORMAL) }, -- TODO: registers
+
+    ["<up>"] = { "doc:create-cursor-previous-line" },
+    ["<down>"] = { "doc:create-cursor-next-line" },
+    ["<left>"] = { "doc:select-to-previous-char" },
+    ["<right>"] = { "doc:select-to-next-char" },
   },
 }
 
@@ -329,16 +448,19 @@ local helpers = {
 config.plugins.modal.helpers.NORMAL = helpers
 config.plugins.modal.helpers.VISUAL = helpers
 config.plugins.modal.helpers.VISUAL_LINE = helpers
+config.plugins.modal.helpers.VISUAL_BLOCK = helpers
 
 config.plugins.modal.carets.NORMAL = modal.caret_style.BAR
 config.plugins.modal.carets.INSERT = modal.caret_style.NORMAL
 config.plugins.modal.carets.VISUAL = modal.caret_style.BAR
 config.plugins.modal.carets.VISUAL_LINE = modal.caret_style.BAR
+config.plugins.modal.carets.VISUAL_BLOCK = modal.caret_style.BAR
 
 config.plugins.modal.on_key_callbacks.NORMAL = modal.on_key_command_only
 config.plugins.modal.on_key_callbacks.VISUAL = modal.on_key_command_only
 config.plugins.modal.on_key_callbacks.INSERT = modal.on_key_passtrought
 config.plugins.modal.on_key_callbacks.VISUAL_LINE = modal.on_key_command_only
+config.plugins.modal.on_key_callbacks.VISUAL_BLOCK = modal.on_key_command_only
 
 command.add(nil, {
   ["w"] = function() command.perform("doc:save") end,
@@ -346,7 +468,8 @@ command.add(nil, {
   ["wq"] = function()
     command.perform("doc:save")
     command.perform("doc:quit")
-  end
+  end,
+  ["e"] = function() command.perform("core:open-file") end,
 })
 
 -- commands that are only available in docview
