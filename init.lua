@@ -8,9 +8,7 @@ local command = require("core.command")
 local core = require("core")
 local common = require("core.common")
 local search = require("core.doc.search")
-
-
--- require("plugins.modal_vim.command_mode")
+local document = require("core.doc")
 
 local modal_vim = {}
 
@@ -26,6 +24,10 @@ local function move_to_start_of_next_word()
     command.perform("doc:move-to-next-word-end")
     -- wait a few seconds for the cursor to jump to next word
     command.perform("doc:move-to-start-of-word")
+end
+
+local function select_stuff()
+    document:add_selection(1, 1, 2, 1)
 end
 
 
@@ -75,7 +77,7 @@ local function get_last_key()
   return nil
 end
 
-
+-- TODO: have these 2 not be multiline, thanks
 local function move_on_next_char()
   local view = core.active_view
   local last = get_last_key()
@@ -145,7 +147,7 @@ config.plugins.modal.keymaps = {
     ["."] = modal.redo_command,
 
     -- INSERT mode
-    ["i"] = { modal.go_to_mode(mode.INSERT) }, -- add function to not send cursor back a line if at first column
+    ["i"] = { modal.go_to_mode(mode.INSERT) }, -- TODO: add function to not send cursor back a line if at first column
     ["I"] = { "doc:move-to-start-of-indentation", modal.go_to_mode(mode.INSERT) },
     ["o"] = { "doc:newline-below", modal.go_to_mode(mode.INSERT) },
     ["O"] = { "doc:newline_above", modal.go_to_mode(mode.INSERT) },
@@ -155,13 +157,7 @@ config.plugins.modal.keymaps = {
     -- VISUAL Mode
     ["v"] = { modal.go_to_mode(mode.VISUAL) },
     ["V"] = { "doc:move-to-start-of-line", "doc:select-to-next-line", "doc:select-to-previous-char", modal.go_to_mode(mode.VISUAL_LINE) },
-    -- ["V"] = { "doc:move-to-end-of-line", "doc:select-to-start-of-line", modal.go_to_mode(mode.VISUAL_LINE) },
     ["C-v"] = { modal.go_to_mode(mode.VISUAL_BLOCK) }, -- BLOCK visual mode, use multi cursor to simulate or try to get selection functions working
-
-    ["viw"] = { "doc:move-to-start-of-word", "doc:select-to-next-word-end" },
-    ["vi'"] = { move_on_next_char, "v", move_on_next_char },
-    ['vi<.>'] = { move_on_next_char, "doc:select-none", "v", move_on_next_char },
-
 
     [":"] = "core:find-command",
     [";:"] = "doc:go-to-line", -- temporary solution, solution: loop over amount of lines, make them commands, jump
@@ -201,12 +197,11 @@ config.plugins.modal.keymaps = {
 
     -- Basic movements
     ["<right>"] = { "doc:move-to-next-char" },
-    ["<left>"] =  { "doc:move-to-previous-char" },
-    ["<up>"] =    { "doc:move-to-previous-line" },
+    ["<left>"] = { "doc:move-to-previous-char" },
+    ["<up>"] = { "doc:move-to-previous-line" },
     ["<down>"] =  { "doc:move-to-next-line" },
 
-    ["<tab>"] =     { "doc:move-to-next-char" },
-    ["<bkspc>"] =   { "doc:move-to-previous-char" },
+    ["<bkspc>"] = { "doc:move-to-previous-char" },
     ["C-<bkspc>"] = { "doc:move-to-previous-word" },
 
     ["l"] = { "doc:move-to-next-char" },
@@ -214,24 +209,20 @@ config.plugins.modal.keymaps = {
     ["k"] = { "doc:move-to-previous-line" },
     ["j"] = { "doc:move-to-next-line" },
 
-    -- ["w"] = move_to_start_of_next_word,
     ["w"] = "doc:move-to-next-word-end",
-    ["W"] = "doc:move-to-next-WORD-end",
+    ["W"] = "doc:move-to-next-WORD-end", -- currently inserts a new line for some odd reason
     ["b"] = "doc:move-to-previous-word-start",
-    ["B"] = "doc:move-to-previous-WORD-start",
+    ["B"] = "doc:move-to-previous-WORD-start", -- currently inserts a new line for some odd reason
     ["e"] = "doc:move-to-next-word-end",
+
+    ["["] = "doc:move-to-previous-block-start",
+    ["]"] = "doc:move-to-next-block-end",
 
     ["C-<right>"] = { "doc:move-to-next-word-end" },
     ["C-<left>"] = { "doc:move-to-previous-word-start" },
 
-    ["f<.>"] = { move_on_next_char, "doc:select-none", "doc:move-to-previous-char" }, -- hacked together as hell LMAOOOOOO
-    ["F<.>"] = { move_on_prev_char, "doc:select-none" }, -- hacked together as hell LMAOOOOOO
-
-    -- ["F<.>"] = move_on_prev_char,
-    --
-    -- ["t<.>"] = move_after_next_char,
-    -- ["T<.>"] = move_after_prev_char,
-
+    ["f<.>"] = { move_on_next_char, "doc:select-none", "doc:move-to-previous-char" },
+    ["F<.>"] = { move_on_prev_char, "doc:select-none" },
 
     ["yy"] = { "doc:move-to-start-of-line", "doc:select-to-end-of-line", "doc:copy", "doc:select-none" },
     ["p"] = "doc:paste",
@@ -240,7 +231,7 @@ config.plugins.modal.keymaps = {
     -- ["<C-r>"] = "doc:redo",
     ["U"] = "doc:redo", -- personal preference
 
-    ["C-u"] = "doc:move-to-previous-page",
+    ["C-u"] = "doc:move-to-previous-page", -- TODO: move half a page instead
     ["C-d"] = "doc:move-to-next-page",
 
     ["gg"] = "doc:move-to-start-of-doc",
@@ -257,14 +248,18 @@ config.plugins.modal.keymaps = {
     ["<space>wv"] = { "root:split-right", "root:switch-to-right" },
     ["<space>ws"] = { "root:split-down", "root:switch-to-down" },
 
-    -- ["~"] = { "doc:move-to-next-char", "doc:select-to-previous-char", "doc:upper-case", "doc:select-none" },
+    ["~"] = { "doc:move-to-next-char", "doc:select-to-previous-char", "doc:upper-case", "doc:select-none" },
   },
   INSERT = {
     ["<ESC>"] = { modal.go_to_mode(mode.NORMAL) },
     ["C-c"] = { modal.go_to_mode(mode.NORMAL) },
+    ["C-["] = { modal.go_to_mode(mode.NORMAL), "doc:select-none" },
 
     ["<bkspc>"] =   { "doc:delete-to-previous-char" },
     ["C-<bkspc>"] = { "doc:delete-to-previous-word-start" },
+
+    ["C-<right>"] = { "doc:move-to-next-word-end" },
+    ["C-<left>"] = { "doc:move-to-previous-word-start" },
 
     ["C-V"] = { "doc:paste" },
 
@@ -285,49 +280,52 @@ config.plugins.modal.keymaps = {
     ["C-m"] = { "doc:newline-below" },
 
     ["C-i"] = indent_at_cursor, -- put indentation infront of cursor
-
   },
   VISUAL = {
     ["<ESC>"] = { modal.go_to_mode(mode.NORMAL), "doc:select-none" },
     ["C-c"] = { modal.go_to_mode(mode.NORMAL), "doc:select-none" },
+    ["C-["] = { modal.go_to_mode(mode.NORMAL), "doc:select-none" },
     ["y"] = { "doc:copy", "doc:select-none", modal.go_to_mode(mode.NORMAL) }, -- TODO: registers
 
     ["<right>"] = { "doc:select-to-next-char" },
     ["<left>"] =  { "doc:select-to-previous-char" },
     ["<up>"] =    { "doc:select-to-previous-line" },
     ["<down>"] =  { "doc:select-to-next-line" },
-    
+
+    ["<bkspc>"] = { "doc:select-to-previous-char" },
+    ["C-<bkspc>"] = { "doc:select-to-previous-word" },
+
     ["l"] =  { "doc:select-to-next-char" },
     ["h"] =  { "doc:select-to-previous-char" },
     ["k"] =  { "doc:select-to-previous-line" },
     ["j"] =  { "doc:select-to-next-line" },
+
     ["gg"] = { "doc:select-to-end-of-doc" },
     ["G"] =  { "doc:select-to-start-of-doc" },
 
-    ["0"] = { "doc:select-to-start-of-line" },
     ["e"] = { "doc:select-to-end-of-word" },
     ["B"] = { "doc:select-to-previous-WORD-start" },
     ["W"] = { "doc:select-to-next-WORD-end" },
     ["w"] = "doc:select-to-next-word-end",
     ["b"] = "doc:select-to-previous-word-start",
 
-    ["f<.>"] = { move_on_next_char, "doc:select-to-previous-char" }, -- hacked together as hell LMAOOOOOO
-    ["F<.>"] = { move_on_prev_char }, -- hacked together as hell LMAOOOOOO
+    ["_"] = "doc:select-to-start-of-indentation",
+    ["^"] = "doc:select-to-start-of-indentation",
+    ["$"] = "doc:select-to-end-of-line",
+    ["0"] = { "doc:select-to-start-of-line" },
+
+    ["f<.>"] = { move_on_next_char, "doc:select-to-previous-char" },
+    ["F<.>"] = { move_on_prev_char },
 
     ["ip"] = { "doc:select-to-next-block-end" },
-
-
-
+    ["iw"] = { "doc:move-to-start-of-word", "doc:select-to-next-word-end" },
+    ["iW"] = { "doc:move-to-start-of-WORD", "doc:select-to-next-WORD-end" },
+    ['i<.>'] = { move_on_next_char, "doc:select-none", "v", move_on_next_char, "doc:select-to-previous-char" },
 
     ["d"] = { "doc:copy", "doc:delete", "doc:select-none", modal.go_to_mode(mode.NORMAL) },
     ["x"] = { "doc:copy", "doc:delete", "doc:select-none", modal.go_to_mode(mode.NORMAL) },
 
     ["p"] = { "doc:paste", "doc:select-none", modal.go_to_mode(mode.NORMAL) },
-
-    ["_"] = "doc:select-to-start-of-indentation",
-    ["^"] = "doc:select-to-start-of-indentation",
-    ["$"] = "doc:select-to-end-of-line",
-    ["0"] = "doc:select-to-start-of-line",
 
     ["u"] = { "doc:lower-case", "doc:select-none", modal.go_to_mode(mode.NORMAL) },
     ["U"] = { "doc:upper-case", "doc:select-none", modal.go_to_mode(mode.NORMAL) },
@@ -338,7 +336,8 @@ config.plugins.modal.keymaps = {
   VISUAL_LINE = {
     ["<ESC>"] = { modal.go_to_mode(mode.NORMAL), "doc:select-none" },
     ["C-c"] =   { modal.go_to_mode(mode.NORMAL), "doc:select-none" },
-    
+    ["C-["] = { modal.go_to_mode(mode.NORMAL), "doc:select-none" },
+
     ["y"] = { "doc:copy", "doc:select-none", modal.go_to_mode(mode.NORMAL) }, -- TODO: registers
     ["p"] = { "doc:paste", "doc:select-none", modal.go_to_mode(mode.NORMAL) },
 
@@ -347,6 +346,8 @@ config.plugins.modal.keymaps = {
 
     ["d"] = { "doc:copy", "doc:delete", "doc:select-none", modal.go_to_mode(mode.NORMAL) },
     ["x"] = { "doc:copy", "doc:delete", "doc:select-none", modal.go_to_mode(mode.NORMAL) },
+
+    ["="] = {}, -- reindents line
 
     ["<down>"] = { "doc:select-to-next-line", "doc:select-to-end-of-line" },
     -- ["<up>"] = { "doc:move-to-previous-line", "doc:move-to-start-of-line", "doc:select-to-previous-line", "doc:select-to-start-of-line" },
@@ -357,7 +358,7 @@ config.plugins.modal.keymaps = {
 
     ["k"] =  { "doc:select-to-previous-line" },
     ["j"] =  { "doc:select-to-next-line" },
-    
+
     ["gg"] = { "doc:select-to-end-of-doc" },
     ["G"] = { "doc:select-to-start-of-doc" },
 
@@ -370,9 +371,13 @@ config.plugins.modal.keymaps = {
     [":"] = "core:find-command",
   },
 
+  -- TODO: might wanna replace with just arbitrarily adding selections
+  -- https://takase.top/lite-xl-docs/developer-guide/documents/#modifying-selections
   VISUAL_BLOCK = {
     ["<ESC>"] = { modal.go_to_mode(mode.NORMAL), "doc:select-none" },
     ["C-c"] = { modal.go_to_mode(mode.NORMAL), "doc:select-none" },
+    ["C-["] = { modal.go_to_mode(mode.NORMAL), "doc:select-none" },
+
     ["y"] = { "doc:copy", "doc:select-none", modal.go_to_mode(mode.NORMAL) }, -- TODO: registers
 
     ["<up>"] = { "doc:create-cursor-previous-line" },
@@ -381,6 +386,8 @@ config.plugins.modal.keymaps = {
     ["<right>"] = { "doc:select-to-next-char" },
   },
 }
+
+-- config.plugins.modal.keymaps.NORMAL
 
 local helpers = {
     ["C-w"] = {
@@ -424,7 +431,7 @@ local helpers = {
         { "w", "inner word" },
     },
 
-    -- Some movements are implemented manually as they do not seem to work normally
+
     ["v"] = {
         { "w", "Next word" },
         { "W", "Next WORD" },
@@ -439,8 +446,21 @@ local helpers = {
         { "G", "Last line" },
     },
 
-    ["vi"] = {
+    ["i"] = {
       { "w", "inner word" },
+      { "W", "inner WORD" },
+      { "s", "inner sentence" }, -- TODO
+      { '"', 'inner " string' },
+      { "'", "inner ' string" },
+      { "(", "inner [(])" }, -- TODO
+      { ")", "inner [(])" }, -- TODO
+      { "<", "inner <>" }, -- TODO
+      { ">", "inner <>" }, -- TODO
+      { "[", "inner []" }, -- TODO
+      { "]", "inner []" }, -- TODO
+      { "`", "inner `" }, -- TODO
+      { "{", "inner [{]}" }, -- TODO
+      { "}", "inner [{]}" }, -- TODO
       { "p", "inner paragraph" },
     },
 }
@@ -463,13 +483,13 @@ config.plugins.modal.on_key_callbacks.VISUAL_LINE = modal.on_key_command_only
 config.plugins.modal.on_key_callbacks.VISUAL_BLOCK = modal.on_key_command_only
 
 command.add(nil, {
-  ["w"] = function() command.perform("doc:save") end,
-  ["q"] = function() command.perform("doc:quit") end,
-  ["wq"] = function()
-    command.perform("doc:save")
-    command.perform("doc:quit")
-  end,
-  ["e"] = function() command.perform("core:open-file") end,
+    ["w"] = function() command.perform("doc:save") end,
+    ["q"] = function() command.perform("doc:quit") end,
+    ["wq"] = function()
+      command.perform("doc:save")
+      command.perform("doc:quit")
+    end,
+    ["e"] = function() command.perform("core:open-file") end,
 })
 
 -- commands that are only available in docview
